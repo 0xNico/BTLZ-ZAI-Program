@@ -7,7 +7,7 @@ use std::str::FromStr;
 const SERVER_PUBLIC_KEY: &str = "zaigDCJxJdzSh6ETPosxWfVrzemjLnMJxxqhZCfdEqU";
 
 // func0 - create_player
-pub fn create_player(ctx: Context<CreatePlayer>, active_class: u64, active_weapon: u64) -> Result<()> {
+pub fn create_player(ctx: Context<CreatePlayer>, active_class: u8, active_weapon: u8) -> Result<()> {
     // Validate the active_class is one of the allowed values
     if ![101, 102, 103].contains(&active_class) {
         return Err(error!(ZaiError::InvalidClass));
@@ -18,6 +18,7 @@ pub fn create_player(ctx: Context<CreatePlayer>, active_class: u64, active_weapo
 
     // Set fields for the new player
     player_account.player_id = *ctx.accounts.signer.key; // Assign signer's pubkey
+    player_account.level = 1;
     player_account.xp = 0;
     player_account.chests = 0;
     player_account.active_class = active_class; // Now validated to match weapon
@@ -39,7 +40,7 @@ pub struct CreatePlayer<'info> {
 // func0 - create_player - END.
 
 // func1 - change_default_class
-pub fn change_default_class(ctx: Context<ChangeDefaultClass>, new_class: u64) -> Result<()> {
+pub fn change_default_class(ctx: Context<ChangeDefaultClass>, new_class: u8) -> Result<()> {
     let player = &mut ctx.accounts.player_account;
 
     // Check if the new class is different from the current class
