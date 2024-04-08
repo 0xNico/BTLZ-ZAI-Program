@@ -15,3 +15,11 @@ impl Player {
     pub const LEN: usize = 64; // 61 byte total + 3 byte buffer.
     pub const LEVEL_CAP: u8 = 100;
 }
+
+// Enum to specify the type of premium item to equip
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug)]
+pub enum PremiumItemType {
+    Class,
+    Weapon,
+}
+

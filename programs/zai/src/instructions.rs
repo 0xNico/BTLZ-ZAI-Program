@@ -1,6 +1,6 @@
 // src/instructions.rs
 use anchor_lang::prelude::*;
-use crate::{Player, ZaiError};
+use crate::{Player, PremiumItemType, ZaiError};
 use std::str::FromStr;
 
 // CONST
@@ -92,3 +92,92 @@ pub struct ModifyPlayerXp<'info> {
     pub admin: Signer<'info>,
 }
 //func2 - modify_player_xp - END.
+
+//func3 - increase_player_level
+pub fn increase_player_level(ctx: Context<IncreasePlayerLevel>) -> Result<()> {
+    let player = &mut ctx.accounts.player_account;
+    // Ensure the player is not already at or above the level cap
+    if player.level >= Player::LEVEL_CAP {
+        return Err(ZaiError::LevelCapReached.into());
+    }
+    
+    // Calculate the required XP for the next level using the exponential curve
+    let required_xp_for_next_level = (4250.0 * f64::exp(0.055 * (player.level as f64))).round() as i64;
+
+    // Check if the player has enough XP to level up
+    if player.xp < required_xp_for_next_level {
+        return Err(ZaiError::NotEnoughXp.into());
+    }
+
+    // Level up
+    player.level += 1;
+    // Subtract the required XP for leveling up from the player's current XP
+    player.xp -= required_xp_for_next_level;
+
+    // Attempt to give a chest with a 10% chance
+    let current_slot = Clock::get()?.slot;
+    let player_specific_data = player.player_id.to_bytes(); // Assuming player_id is a Pubkey
+    let randomness_seed = current_slot.wrapping_add(u64::from_le_bytes(player_specific_data[0..8].try_into().unwrap())); // Simple mix of slot and player_id
+    let chest_chance = randomness_seed % 10; // This gives us a value from 0 to 9
+
+    if chest_chance == 0 { // 10% chance
+        player.chests += 1;
+        msg!("Congratulations! You've received a chest for leveling up.");
+    }
+
+    // Log the required XP for the next level and the player's new XP after leveling up
+    msg!("Required XP for next level: {}", required_xp_for_next_level);
+    msg!("Player's XP after leveling up: {}", player.xp);
+
+    Ok(())
+}
+
+//func3 - increase_player_level - ACC.
+#[derive(Accounts)]
+pub struct IncreasePlayerLevel<'info> {
+    #[account(mut, constraint = player_account.level < Player::LEVEL_CAP && player_account.xp >= (4250.0 * f64::exp(0.055 * (player_account.level as f64))).round() as i64)]
+    pub player_account: Account<'info, Player>,
+    // Ensure that the signer is the player attempting to level up
+    #[account(mut, constraint = player_account.player_id == *signer.key)]
+    pub signer: Signer<'info>,
+}
+//func3 - END.
+
+// func4 - equip_premium_item - START.
+pub fn equip_premium_item(ctx: Context<EquipPremiumItem>, item_type: PremiumItemType, item_id: u8) -> Result<()> {
+    let server_pubkey = Pubkey::from_str(SERVER_PUBLIC_KEY).unwrap();
+    // Ensure only the admin can execute this function
+    require_keys_eq!(ctx.accounts.admin.key(), server_pubkey, ZaiError::Unauthorized);
+
+    let player = &mut ctx.accounts.player_account;
+
+    match item_type {
+        PremiumItemType::Class => {
+            // Ensure the new class is not one of the default free classes
+            if [101, 102, 103].contains(&item_id) {
+                return Err(error!(ZaiError::InvalidPremiumClass));
+            }
+            player.active_class = item_id;
+        },
+        PremiumItemType::Weapon => {
+            // Ensure the new weapon is not one of the default free weapons
+            if [101, 102, 103].contains(&item_id) { 
+                return Err(error!(ZaiError::InvalidPremiumWeapon));
+            }
+            player.active_weapon = item_id;
+        },
+    }
+
+    msg!("Player {} equipped premium item {} of type {:?}.", player.player_id, item_id, item_type);
+    Ok(())
+}
+
+// func4 - equip_premium_item - ACC.
+#[derive(Accounts)]
+pub struct EquipPremiumItem<'info> {
+    #[account(mut)]
+    pub player_account: Account<'info, Player>,
+    /// CHECK: This is only checked for authorization purposes, not dereferenced
+    pub admin: Signer<'info>,
+}
+// func4 - END.
